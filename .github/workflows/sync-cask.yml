@@ -1,0 +1,74 @@
+name: Sync cask
+
+# Тап забирает свежий релиз сам, а не получает его пушем из основного
+# репозитория. Так релизной джобе — той, что и так носит ключ подписи, — не
+# нужен кросс-репозиторный PAT: здесь хватает собственного GITHUB_TOKEN на
+# запись в свой же репозиторий.
+#
+# Побочная польза: механизм самовосстанавливающийся. Пропущенный или
+# доработанный релиз подхватится следующим тиком, тогда как пуш из релиза
+# исправляется только повторным релизом.
+
+on:
+  schedule:
+    # Каждые полчаса. Задержка каска против выхода релиза — не та величина,
+    # ради которой стоит держать лишний секрет.
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-cask
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Update cask from the latest release
+        env:
+          # Публичный репозиторий — авторизация для чтения релиза не нужна.
+          # Токен здесь только для push в этот же тап.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TAG=$(curl -fsSL https://api.github.com/repos/zdllucky/wotold/releases/latest | jq -r .tag_name)
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "::notice::Опубликованных релизов нет — нечего синхронизировать"
+            exit 0
+          fi
+          VERSION="${TAG#v}"
+
+          CURRENT=$(grep -oE 'version "[^"]+"' Casks/wotold.rb 2>/dev/null | head -1 | cut -d'"' -f2 || true)
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "::notice::Каск уже на $VERSION"
+            exit 0
+          fi
+
+          URL="https://github.com/zdllucky/wotold/releases/download/${TAG}/Wotold-arm64.dmg"
+          # Подпись проверяет апдейтер приложения; здесь SHA256 нужен самому
+          # Homebrew, и считать его надо по тому же файлу, который получит
+          # пользователь, — поэтому скачиваем, а не берём из релиз-ноутов.
+          curl -fsSL -o /tmp/wotold.dmg "$URL"
+          SHA=$(sha256sum /tmp/wotold.dmg | cut -d' ' -f1)
+
+          curl -fsSL -o /tmp/wotold.rb.tmpl \
+            "https://raw.githubusercontent.com/zdllucky/wotold/${TAG}/.github/homebrew/wotold.rb.tmpl"
+          sed -e "s/{{VERSION}}/${VERSION}/g" -e "s/{{SHA256}}/${SHA}/g" \
+            /tmp/wotold.rb.tmpl > Casks/wotold.rb
+
+          if git diff --quiet; then
+            echo "::notice::Изменений нет"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Casks/wotold.rb
+          git commit -m "wotold ${VERSION}"
+          git push
