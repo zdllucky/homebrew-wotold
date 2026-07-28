@@ -37,15 +37,19 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Через gh, а не curl: неаутентифицированные запросы к GitHub API с
-          # раннеров упираются в общий лимит по IP и отдают 403. Токен тапа
-          # даёт чтение любого публичного репозитория и снимает лимит.
-          TAG=$(gh release view --repo zdllucky/wotold --json tagName --jq .tagName 2>/dev/null || true)
-          if [ -z "$TAG" ]; then
+          # Ни API, ни токена: только стабильные ссылки на ассеты релиза.
+          #
+          # gh с автоматическим GITHUB_TOKEN тут не годится — он scoped на свой
+          # репозиторий и релизы соседнего не видит (404), а анонимный вызов
+          # api.github.com упирается в лимит по IP раннера (403). Прямая
+          # загрузка ассета идёт мимо API и не лимитируется.
+          curl -fsSL -o /tmp/latest.json \
+            https://github.com/zdllucky/wotold/releases/latest/download/latest.json
+          VERSION=$(jq -r .version /tmp/latest.json)
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
             echo "::notice::Опубликованных релизов нет — нечего синхронизировать"
             exit 0
           fi
-          VERSION="${TAG#v}"
 
           CURRENT=$(grep -oE 'version "[^"]+"' Casks/wotold.rb 2>/dev/null | head -1 | cut -d'"' -f2 || true)
           if [ "$CURRENT" = "$VERSION" ]; then
@@ -54,12 +58,12 @@ jobs:
           fi
 
           # SHA256 считаем по тому самому файлу, который получит пользователь.
-          gh release download "$TAG" --repo zdllucky/wotold \
-            --pattern 'Wotold-arm64.dmg' --dir /tmp --clobber
-          SHA=$(sha256sum /tmp/Wotold-arm64.dmg | cut -d' ' -f1)
+          curl -fsSL -o /tmp/wotold.dmg \
+            https://github.com/zdllucky/wotold/releases/latest/download/Wotold-arm64.dmg
+          SHA=$(sha256sum /tmp/wotold.dmg | cut -d' ' -f1)
 
-          gh api "repos/zdllucky/wotold/contents/.github/homebrew/wotold.rb.tmpl?ref=${TAG}" \
-            --jq .content | base64 -d > /tmp/wotold.rb.tmpl
+          curl -fsSL -o /tmp/wotold.rb.tmpl \
+            "https://raw.githubusercontent.com/zdllucky/wotold/v${VERSION}/.github/homebrew/wotold.rb.tmpl"
 
           # git пустых каталогов не хранит — на первом прогоне Casks/ ещё нет.
           mkdir -p Casks
