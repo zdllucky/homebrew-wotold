@@ -70,13 +70,18 @@ jobs:
           sed -e "s/{{VERSION}}/${VERSION}/g" -e "s/{{SHA256}}/${SHA}/g" \
             /tmp/wotold.rb.tmpl > Casks/wotold.rb
 
-          if git diff --quiet; then
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # add ДО проверки: `git diff` не видит неотслеживаемых файлов, и на
+          # первом прогоне — когда каск ещё не существует — джоба тихо решала,
+          # что менять нечего, и выходила успешной. Молчаливый no-op здесь
+          # худший исход: синк «работает», а каска нет.
+          git add Casks/wotold.rb
+          if git diff --cached --quiet; then
             echo "::notice::Изменений нет"
             exit 0
           fi
 
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Casks/wotold.rb
           git commit -m "wotold ${VERSION}"
           git push
