@@ -59,6 +59,8 @@ jobs:
 
           curl -fsSL -o /tmp/wotold.rb.tmpl \
             "https://raw.githubusercontent.com/zdllucky/wotold/${TAG}/.github/homebrew/wotold.rb.tmpl"
+          # git пустых каталогов не хранит — на первом прогоне Casks/ ещё нет.
+          mkdir -p Casks
           sed -e "s/{{VERSION}}/${VERSION}/g" -e "s/{{SHA256}}/${SHA}/g" \
             /tmp/wotold.rb.tmpl > Casks/wotold.rb
 
