@@ -51,19 +51,24 @@ jobs:
             exit 0
           fi
 
-          CURRENT=$(grep -oE 'version "[^"]+"' Casks/wotold.rb 2>/dev/null | head -1 | cut -d'"' -f2 || true)
-          if [ "$CURRENT" = "$VERSION" ]; then
-            echo "::notice::Каск уже на $VERSION"
-            exit 0
-          fi
+          # Раньше здесь стоял выход по «версия не изменилась». Из-за него
+          # правка шаблона — например снятие депрекации в depends_on — не
+          # доезжала до тапа, пока не выйдет посторонний релиз. Рендерим
+          # всегда, а коммитим только если результат отличается: проверку
+          # делает `git diff --cached` ниже.
 
           # SHA256 считаем по тому самому файлу, который получит пользователь.
           curl -fsSL -o /tmp/wotold.dmg \
             https://github.com/zdllucky/wotold/releases/latest/download/Wotold-arm64.dmg
           SHA=$(sha256sum /tmp/wotold.dmg | cut -d' ' -f1)
 
+          # Шаблон — с main, а не с тега выпуска. Версия и контрольная сумма
+          # всё равно берутся из реального релиза, а вот упаковка (депрекации
+          # Homebrew, формулировки caveats) обязана чиниться сразу: привязка к
+          # тегу означала бы, что предупреждение brew живёт до следующего
+          # релиза, никак с ним не связанного.
           curl -fsSL -o /tmp/wotold.rb.tmpl \
-            "https://raw.githubusercontent.com/zdllucky/wotold/v${VERSION}/.github/homebrew/wotold.rb.tmpl"
+            "https://raw.githubusercontent.com/zdllucky/wotold/main/.github/homebrew/wotold.rb.tmpl"
 
           # git пустых каталогов не хранит — на первом прогоне Casks/ ещё нет.
           mkdir -p Casks
