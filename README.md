@@ -5,8 +5,17 @@ transcription, speaker diarization and summaries. Everything runs on device.
 
 ```bash
 brew tap zdllucky/wotold
+brew trust zdllucky/wotold
 brew install --cask wotold
 ```
+
+Homebrew 6 requires `brew trust` for any third-party tap, and refuses to load the cask
+without it. A cask is executable Ruby rather than a manifest, so trusting this tap is your
+explicit consent to run code that Homebrew's own maintainers never reviewed. The author
+cannot pre-authorise it — that is the whole point of the check.
+
+[`Casks/wotold.rb`](Casks/wotold.rb) is fifty lines: where the disk image comes from, its
+checksum, and what `--zap` deletes. Reading it before trusting is the intended workflow.
 
 Requires **macOS 14.4+ on Apple Silicon**. The bundled speech and language sidecars
 are built for arm64 only.
